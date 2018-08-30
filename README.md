@@ -11,12 +11,20 @@ Arch Linux:
 ```bash
 sudo pacman -S python-{requests,pip} git
 
-git clone https://github.com/MikeWent/vk-social-graph.git
-cd vk-social-graph/
-git submodule update --recursive
+git clone --recursive https://github.com/MikeWent/vk-social-graph.git
+cd vk-social-graph
 
 pip3 install --user wheel
 pip3 install --user -r requirements.txt
+```
+
+## Updating
+
+```bash
+cd vk-social-graph
+git pull
+git submodule update --recursive
+pip3 install --user --upgrade -r requirements.txt
 ```
 
 ## License
