@@ -5,6 +5,7 @@ import json
 from os.path import exists as file_exists
 from random import randint
 from time import sleep
+from os import makedirs
 
 import matplotlib
 # don't use X11 as backend on headless machines
@@ -17,7 +18,7 @@ import requests
 args = argparse.ArgumentParser()
 args.add_argument("-t", "--target", help="target root user, default is current user id", metavar="ID")
 args.add_argument("-s", "--size", help="graph width and height, default is 100 80", metavar="N", type=int, nargs=2, default=(100, 80))
-args.add_argument("-f", "--font-size", help="font size of node labels (names), default is 9", type=int, default=9)
+args.add_argument("-f", "--font-size", help="font size of node labels (names), default is 8", type=int, default=8)
 args.add_argument("-o", "--output", help="output filename **without extension** (.svg or .png), default is 'social-graph-{root_user_id}'", metavar="FILENAME")
 args.add_argument("-p", "--png", help="generate png file too (they are very large)", action="store_true")
 options = args.parse_args()
@@ -91,7 +92,7 @@ def filter_user_data(user_data):
         user_data {dict} -- raw user info got from vk.method("users.get")
     """
     return {"id": user_data["id"],
-            "name": user_data["first_name"] + " " + user_data["last_name"],
+            "name": user_data["first_name"] + "\n" + user_data["last_name"],
             "sex": user_data["sex"]}
 
 
@@ -162,9 +163,13 @@ else:
 root_user_data = get_user_info(root_user_link)
 root_user_id = root_user_data["id"]
 
-friendship_tree_file = "tree-{}.json".format(root_user_id)
-if file_exists(friendship_tree_file):
-    with open(friendship_tree_file, "r") as f:
+cache_dir = "cache/"
+makedirs(cache_dir, exist_ok=True)
+friendship_tree_path = cache_dir+"tree-{}.json".format(root_user_id)
+networkx_graph_path = cache_dir+"graph-{}.gpickle".format(root_user_id)
+
+if file_exists(friendship_tree_path):
+    with open(friendship_tree_path, "r") as f:
         friendship_tree = json.load(f)
     print("Friendship tree for user {} loaded from cache".format(root_user_id))
 else:
@@ -177,27 +182,33 @@ else:
         friendship_tree.append(friend)
         random_delay()
     print()
-    print("Saving to file {}...".format(friendship_tree_file))
-    with open(friendship_tree_file, "w") as f:
+    with open(friendship_tree_path, "w") as f:
         json.dump(friendship_tree, f, indent=2)
+    print("Friendship tree for user {} saved to {}...".format(root_user_id, friendship_tree_path))
 
-print("Building base graph...")
-G = nx.Graph()
-G.add_node(root_user_id)
-for friend in friendship_tree:
-    G.add_node(friend["id"])
-    # connect root user to his primary friends
-    G.add_edge(root_user_id, friend["id"])
+if file_exists(networkx_graph_path):
+    G = nx.readwrite.read_gpickle(networkx_graph_path)
+    print("Graph data for user {} loaded from cache".format(root_user_id))
+else:
+    print("Building base graph...")
+    G = nx.Graph()
+    G.add_node(root_user_id)
+    for friend in friendship_tree:
+        G.add_node(friend["id"])
+        # connect root user to his primary friends
+        G.add_edge(root_user_id, friend["id"])
 
-for n, primary_friend in enumerate(friendship_tree, start=1):
-    print("Processing trees: {}/{}...".format(n, len(friendship_tree)), end="\r")
-    for user_x in primary_friend["friends"]:
-        for _primary_friend_ in friendship_tree:
-            if user_x in _primary_friend_["friends"] and _primary_friend_ != primary_friend:
-                if not user_x in G:
-                    G.add_node(user_x["id"])
-                G.add_edge(user_x["id"], _primary_friend_["id"])
-print()
+    for n, primary_friend in enumerate(friendship_tree, start=1):
+        print("Processing graph: {}/{}...".format(n, len(friendship_tree)), end="\r")
+        for user_x in primary_friend["friends"]:
+            for _primary_friend_ in friendship_tree:
+                if user_x in _primary_friend_["friends"] and _primary_friend_ != primary_friend:
+                    if not user_x in G:
+                        G.add_node(user_x["id"])
+                    G.add_edge(user_x["id"], _primary_friend_["id"])
+    print()
+    nx.readwrite.write_gpickle(G, networkx_graph_path)
+    print("Graph data saved to {}".format(networkx_graph_path))
 
 print("Visualizing the graph...")
 def choose_color(node):
@@ -254,7 +265,9 @@ if options.output:
     svg_filename = options.output+".svg"
     png_filename = options.output+".png"
 else:
-    base_name = "social-graph-{}".format(root_user_id)
+    img_dir = "img/"
+    makedirs(img_dir, exist_ok=True)
+    base_name = img_dir+"social-graph-{}".format(root_user_id)
     svg_filename = base_name+".svg"
     png_filename = base_name+".png"
 
@@ -264,8 +277,8 @@ export_params = {
 }
 print("Creating SVG image...")
 plt.savefig(svg_filename, **export_params)
-print("Saved to {}".format(svg_filename))
+print("SVG image saved to {}".format(svg_filename))
 if options.png:
     print("Creating PNG image...")
     plt.savefig(png_filename, **export_params)
-    print("Saved to {}".format(png_filename))
+    print("PNG image saved {}".format(png_filename))
