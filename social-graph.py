@@ -184,8 +184,7 @@ else:
     print()
     with open(friendship_tree_path, "w") as f:
         json.dump(friendship_tree, f, indent=2)
-    print("Friendship tree for user {} saved to {}".format(root_user_id, friendship_tree_path))
-
+    print("Friendship tree for user {} saved to {}...".format(root_user_id, friendship_tree_path))
 
 if file_exists(networkx_graph_path):
     G = nx.readwrite.read_gpickle(networkx_graph_path)
@@ -206,17 +205,10 @@ else:
                 if user_x in _primary_friend_["friends"] and _primary_friend_ != primary_friend:
                     if not user_x in G:
                         G.add_node(user_x["id"])
-                    # don't create the same edge twice
-                    if ((user_x["id"], _primary_friend_["id"]) or
-                        (_primary_friend_["id"], user_x["id"])) in G.edges():
-                        pass
-                    else:
-                        G.add_edge(user_x["id"], _primary_friend_["id"])
-
+                    G.add_edge(user_x["id"], _primary_friend_["id"])
     print()
     nx.readwrite.write_gpickle(G, networkx_graph_path)
     print("Graph data saved to {}".format(networkx_graph_path))
-
 
 print("Visualizing the graph...")
 def choose_color(node):
