@@ -13,7 +13,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import networkx as nx
-import requests
+
+import vk_api
 
 args = argparse.ArgumentParser()
 args.add_argument("-t", "--target", help="target root user, default is current user id", metavar="ID")
@@ -24,72 +25,19 @@ args.add_argument("-p", "--png", help="generate png file too (they are very larg
 options = args.parse_args()
 
 
-class VKAPIError(Exception):
-    def __init__(self, message):
-        self.message = message
-
-class VKAPI:
-    def __init__(self, access_token, version="5.80"):
-        """Simple vk.com API wrapper
-        
-        Arguments:
-            access_token {str} -- account access token
-        
-        Keyword Arguments:
-            version {str} -- API version (default: "5.80")
-        """
-
-        self.url = "https://api.vk.com/method/{}"
-        self.required_params = {"access_token": access_token,
-                                "v": version}
-        
-    def method(self, name, **params):
-        """Execute method (see vk.com/dev/methods) with passed params
-        
-        Arguments:
-            name {str} -- method name
-        
-        Raises:
-            VKAPIError -- common VK API error
-        
-        Returns:
-            list, dict -- VK API 'response' object
-        """
-
-        if params:
-            params.update(self.required_params)
-        else:
-            params = self.required_params
-        r = requests.post(self.url.format(name), data=params)
-        response = r.json()
-        if response.get("error"):
-            raise VKAPIError(response["error"]["error_msg"])
-        else:
-            return response.get("response", None)
-
-
-def random_delay():
-    """Sleep 0.3-0.5 seconds"""
+def delay():
+    """Sleep 0.3-0.4 seconds"""
     try:
-        sleep(randint(3, 5) / 10)
+        sleep(randint(3, 4) / 10)
     except KeyboardInterrupt:
         exit()
-
-
-def is_valid(access_token):
-    """Check access token by making a test request"""
-    try:
-        VKAPI(access_token).method("utils.getServerTime")
-        return True
-    except VKAPIError:
-        return False
 
 
 def filter_user_data(user_data):
     """Get a dict of filtered information
     
     Arguments:
-        user_data {dict} -- raw user info got from vk.method("users.get")
+        user_data {dict} -- raw user info got from vk.users.get
     """
     return {"id": user_data["id"],
             "name": user_data["first_name"] + "\n" + user_data["last_name"],
@@ -100,15 +48,15 @@ def get_user_info(user_id=None):
     """Get user info by user id
     
     Arguments:
-        user_id {int} -- target user id or link after vk.com/ (default: None)
+        user_id {int} -- target user id or a link (default: None)
     
     Returns:
         dict -- user id, name and sex (1 - female, 2 - male)
     """
 
     try:
-        user_data =  vk.method("users.get", user_ids=user_id, fields="sex")[0]
-    except VKAPIError:
+        user_data =  vk.users.get(user_ids=user_id, fields="sex")[0]
+    except vk_api.VkApiError:
         return None
     return filter_user_data(user_data)
 
@@ -122,9 +70,8 @@ def get_user_friends(user_id=None):
         list -- a list of user ids
     """
     try:
-        friends = vk.method("friends.get", user_id=user_id,
-                            order="hints", fields="sex").get("items", None)
-    except VKAPIError:
+        friends = vk.friends.get(user_id=user_id, order="hints", fields="sex").get("items", None)
+    except vk_api.VkApiError:
         return []
     list_with_filtered_info = []
     for user_data in friends:
@@ -142,19 +89,23 @@ def tree_lookup(user_id):
                 return friend
 
 
-if file_exists("access_token.txt"):
-    with open("access_token.txt", "r") as f:
-        # filter \n and \r
-        access_token = f.read().rstrip()
-    if is_valid(access_token):
-        vk = VKAPI(access_token)
-    else:
-        print("Error: access token is invalid, vk.com denied access to API")
-        exit(1)
-else:
-    print("Error: cannot read access token from access_token.txt file.")
-    print("Run 'auth.py' to acquire it automatically.")
-    exit(1)
+success_auth = False
+while not success_auth:
+    try:
+        with open("access_token.txt", "r") as f:
+            access_token = f.read().rstrip()
+        vk_session = vk_api.VkApi(token=access_token)
+        try:
+            vk = vk_session.get_api()
+            if vk.users.get():
+                success_auth = True
+                break
+        except vk_api.VkApiError:
+            pass
+    except FileNotFoundError:
+        pass
+    import auth
+    print("---")
 
 if options.target:
     root_user_link = options.target
@@ -180,7 +131,7 @@ else:
         friends_of_friend = get_user_friends(friend["id"])
         friend.update({"friends": friends_of_friend})
         friendship_tree.append(friend)
-        random_delay()
+        delay()
     print()
     with open(friendship_tree_path, "w") as f:
         json.dump(friendship_tree, f, indent=2)
