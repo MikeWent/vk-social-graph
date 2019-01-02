@@ -16,6 +16,8 @@ import networkx as nx
 
 import vk_api
 
+import auth
+
 args = argparse.ArgumentParser()
 args.add_argument("-t", "--target", help="target root user, default is current user id", metavar="ID")
 args.add_argument("-s", "--size", help="graph width and height, default is 100 80", metavar="N", type=int, nargs=2, default=(100, 80))
@@ -89,23 +91,8 @@ def tree_lookup(user_id):
                 return friend
 
 
-success_auth = False
-while not success_auth:
-    try:
-        with open("access_token.txt", "r") as f:
-            access_token = f.read().rstrip()
-        vk_session = vk_api.VkApi(token=access_token)
-        try:
-            vk = vk_session.get_api()
-            if vk.users.get():
-                success_auth = True
-                break
-        except vk_api.VkApiError:
-            pass
-    except FileNotFoundError:
-        pass
-    import auth
-    print("---")
+vk_session = vk_api.VkApi(token=auth.ACCESS_TOKEN)
+vk = vk_session.get_api()
 
 if options.target:
     root_user_link = options.target
